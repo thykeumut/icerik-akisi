@@ -1,0 +1,544 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>içerik akışı</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@300..700&family=IBM+Plex+Mono:wght@300;400;600&display=swap" rel="stylesheet">
+  <style>
+    :root{
+      --bg:#0e0f13;
+      --panel:#15161c;
+      --panel2:#1a1c23;
+      --border:#262933;
+      --ink:#e9e6dd;
+      --dim:#8b8894;
+      --faint:#5d5b66;
+      --acc:#ffb43a;
+      --acc2:#ff5c7a;
+      --ok:#7ddc6e;
+      --serif:"Space Grotesk",sans-serif;
+      --mono:"IBM Plex Mono",monospace;
+    }
+    *{margin:0;padding:0;box-sizing:border-box}
+    html{color-scheme:dark}
+    body{background:var(--bg);color:var(--ink);font-family:var(--serif);line-height:1.5}
+    a{color:inherit}
+    .wrap{max-width:680px;margin:0 auto;padding:2rem 1.2rem 6rem}
+    header{display:flex;align-items:center;justify-content:space-between;margin-bottom:2rem;gap:1rem;flex-wrap:wrap}
+    .logo{font-size:1.5rem;font-weight:700;letter-spacing:-.02em}
+    .logo em{font-style:normal;color:var(--acc)}
+    .top-actions{display:flex;gap:.6rem;align-items:center}
+    .btn{font-family:var(--mono);font-size:.78rem;border:1px solid var(--border);background:var(--panel);color:var(--ink);padding:.55rem 1rem;cursor:pointer;border-radius:6px;transition:all .18s}
+    .btn:hover{border-color:var(--acc);color:var(--acc)}
+    .btn.primary{background:var(--acc);color:#1a1a1a;border-color:var(--acc)}
+    .btn.primary:hover{filter:brightness(1.1);color:#1a1a1a}
+    .btn.ghost{background:transparent}
+    .btn:disabled{opacity:.45;cursor:not-allowed;filter:none}
+    .stack{display:flex;flex-direction:column;gap:1rem}
+    .card{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:1.1rem 1.2rem;transition:border-color .2s}
+    .card:hover{border-color:#3a3d4a}
+    .card-head{display:flex;align-items:center;justify-content:space-between;gap:.6rem;margin-bottom:.55rem}
+    .author{font-family:var(--mono);font-size:.7rem;color:var(--dim);letter-spacing:.1em}
+    .author b{color:var(--acc);font-weight:600}
+    .time{font-family:var(--mono);font-size:.68rem;color:var(--faint);white-space:nowrap}
+    .title{font-size:1.15rem;font-weight:600;letter-spacing:-.01em;word-break:break-word}
+    .body{color:#c9c6bd;font-size:.92rem;margin-top:.4rem;white-space:pre-wrap;word-break:break-word}
+    .card img{max-width:100%;border-radius:6px;margin-top:.7rem}
+    .foot{display:flex;gap:1rem;align-items:center;margin-top:.9rem;font-family:var(--mono);font-size:.72rem;color:var(--dim)}
+    .foot .spacer{flex:1}
+    .foot button.tbtn{background:none;border:none;color:var(--dim);cursor:pointer;font-family:var(--mono);font-size:.72rem;padding:.1rem}
+    .foot button.tbtn:hover{color:var(--acc)}
+    .foot button.tbtn.del:hover{color:var(--acc2)}
+    .vote{display:flex;align-items:center;gap:.15rem;background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:.2rem .45rem;transition:border-color .2s}
+    .vote:hover{border-color:#3a3d4a}
+    .vote button{background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:.92rem;line-height:1;padding:.28rem .55rem;border-radius:999px;transition:all .15s}
+    .vote button:hover{background:#23252d;transform:translateY(-1px)}
+    .vote button.on-up{color:var(--ok);background:rgba(125,220,110,.14)}
+    .vote button.on-down{color:var(--acc2);background:rgba(255,92,122,.14)}
+    .vote .num{font-family:var(--mono);font-size:.72rem;font-weight:600;min-width:1.3rem;text-align:center;color:var(--ink)}
+    .vote .sep{width:1px;height:1.05rem;background:var(--border);margin:0 .15rem}
+    .imgpick{display:flex;align-items:center;gap:.6rem;flex-wrap:wrap}
+    .imgpick img{max-width:100%;max-height:9rem;border-radius:6px;display:block}
+    .fnote{font-family:var(--mono);font-size:.66rem;color:var(--faint)}
+    .empty{font-family:var(--mono);font-size:.8rem;color:var(--faint);text-align:center;padding:3rem 0}
+    .banner{font-family:var(--mono);font-size:.72rem;padding:.8rem 1rem;border-radius:6px;margin-bottom:1rem;line-height:1.7;border:1px solid}
+    .banner.warn{background:#241a1a;border-color:#4a2c2c;color:#d8a0a0}
+    .banner.info{background:#1a2230;border-color:#2c3d54;color:#9db6d8}
+    .banner.ok{background:#1a261a;border-color:#2c4a2c;color:#a0d8a0}
+    .toast{position:fixed;bottom:1.2rem;left:50%;transform:translateX(-50%);z-index:60;max-width:min(92vw,32rem)}
+
+    /* ---------- modal ---------- */
+    .modal-bg{position:fixed;inset:0;z-index:40;display:none;align-items:center;justify-content:center;background:rgba(8,8,10,.75);backdrop-filter:blur(4px);padding:1rem}
+    .modal-bg.open{display:flex}
+    .modal{background:var(--panel);border:1px solid var(--border);border-radius:12px;padding:1.6rem;width:100%;max-width:26rem}
+    .modal h3{font-size:1.15rem;margin-bottom:1.1rem}
+    .field{margin-bottom:.9rem}
+    .field label{display:block;font-family:var(--mono);font-size:.65rem;letter-spacing:.15em;text-transform:uppercase;color:var(--dim);margin-bottom:.35rem}
+    .field input,.field textarea{width:100%;background:var(--panel2);border:1px solid var(--border);color:var(--ink);padding:.65rem .8rem;border-radius:6px;font-family:var(--serif);font-size:.9rem;outline:none;transition:border-color .18s}
+    .field textarea{min-height:6rem;resize:vertical}
+    .field input:focus,.field textarea:focus{border-color:var(--acc)}
+    .field .err{color:var(--acc2);font-family:var(--mono);font-size:.68rem;margin-top:.3rem;display:none}
+    .field .err.show{display:block}
+    .form-err{color:var(--acc2);font-family:var(--mono);font-size:.7rem;margin-top:.5rem;display:none}
+    .form-err.show{display:block}
+    .modal-foot{display:flex;gap:.6rem;justify-content:flex-end;margin-top:1.1rem}
+    .authSwitch{font-family:var(--mono);font-size:.7rem;color:var(--dim);text-align:center;margin-top:1rem}
+    .authSwitch a{color:var(--acc);cursor:pointer;text-decoration:underline}
+    .hint{font-family:var(--mono);font-size:.66rem;color:var(--faint);line-height:1.7;margin-top:.8rem}
+
+    /* ---------- kullanıcı çipi ---------- */
+    .userchip{display:flex;align-items:center;gap:.6rem;font-family:var(--mono);font-size:.72rem;color:var(--dim)}
+    .userchip b{color:var(--acc);font-weight:600}
+    .userchip button{background:none;border:none;color:var(--dim);cursor:pointer;font-size:.7rem;text-decoration:underline;padding:0}
+    .userchip button:hover{color:var(--acc2)}
+
+    .spinner{display:inline-block;width:14px;height:14px;border:2px solid var(--acc);border-top-color:transparent;border-radius:50%;animation:spin .7s linear infinite;vertical-align:-2px}
+    @keyframes spin{to{transform:rotate(360deg)}}
+    @media (max-width:600px){.wrap{padding:1.2rem 1rem 5rem}}
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <header>
+      <div class="logo">içerik<em>.</em>akışı</div>
+      <div class="top-actions" id="authArea"></div>
+    </header>
+
+    <div id="main"><div class="empty"><span class="spinner"></span></div></div>
+  </div>
+
+  <!-- ============ GİRİŞ / KAYIT MODALI ============ -->
+  <div id="authModal" class="modal-bg">
+    <div class="modal">
+      <h3 id="authTitle">Giriş yap</h3>
+      <div class="field" id="nameField">
+        <label>Kullanıcı adı</label>
+        <input type="text" id="authName" maxlength="20" placeholder="2–20 karakter: harf, rakam, _">
+        <div class="err" id="nameErr"></div>
+      </div>
+      <div class="field">
+        <label>E-posta</label>
+        <input type="email" id="authEmail" autocomplete="email">
+        <div class="err" id="emailErr"></div>
+      </div>
+      <div class="field">
+        <label>Parola</label>
+        <input type="password" id="authPass" autocomplete="current-password" placeholder="en az 6 karakter">
+        <div class="err" id="passErr"></div>
+      </div>
+      <div class="form-err" id="formErr"></div>
+      <div class="modal-foot">
+        <button class="btn ghost" id="authCancel">Vazgeç</button>
+        <button class="btn primary" id="authGo">Devam</button>
+      </div>
+      <div class="authSwitch" id="authSwitch"></div>
+    </div>
+  </div>
+
+  <!-- Supabase (UMD — dosyadan açınca da çalışır) -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/dist/umd/supabase.min.js"></script>
+  <script src="config.js"></script>
+
+  <script>
+    const SUPABASE_URL = window.SUPABASE_URL;
+    const SUPABASE_ANON_KEY = window.SUPABASE_ANON_KEY;
+    const configured = !SUPABASE_URL.includes('BURAYA') && !SUPABASE_ANON_KEY.includes('BURAYA');
+    const sb = configured
+      ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+      : null;
+
+    const $ = (id) => document.getElementById(id);
+    const esc = (s) => String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&','<':'<','>':'>','"':'"',"'":'&#39;'}[c]));
+
+    let user = null;
+    let profile = null;
+
+    /* ================= yardımcılar ================= */
+    function timeAgo(d){
+      const s = (Date.now() - new Date(d).getTime()) / 1000;
+      if (s < 60) return 'şimdi';
+      if (s < 3600) return Math.floor(s/60) + ' dk önce';
+      if (s < 86400) return Math.floor(s/3600) + ' sa önce';
+      if (s < 86400*30) return Math.floor(s/86400) + ' g önce';
+      return new Date(d).toLocaleDateString('tr-TR', {day:'numeric', month:'short'});
+    }
+    function toast(msg, cls='info'){
+      const el = document.createElement('div');
+      el.className = 'banner ' + cls;
+      el.style.cssText += 'position:fixed;bottom:1.2rem;left:50%;transform:translateX(-50%)';
+      el.textContent = msg;
+      document.body.appendChild(el);
+      setTimeout(()=>el.remove(), 4000);
+    }
+
+    /* ================= auth ================= */
+    async function refreshUser(){
+      if (!sb) return;
+      const { data } = await sb.auth.getUser();
+      user = data?.user ?? null;
+      profile = null;
+      if (user){
+        const { data: p } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
+        profile = p;
+      }
+      if (user && !profile) openAuthModal('profile'); // yarım kalan kayıt → kullanıcı adını tamamlat
+      renderAuthArea();
+      renderFeed();
+    }
+
+    function renderAuthArea(){
+      const area = $('authArea');
+      if (user && profile){
+        area.innerHTML = `
+          <span class="userchip">@<b>${esc(profile.name)}</b></span>
+          <button class="btn primary" id="newPostBtn">Paylaş</button>
+          <button class="btn ghost" id="logoutBtn">Çıkış</button>`;
+        $('newPostBtn').onclick = () => openPostModal();
+        $('logoutBtn').onclick = async () => { await sb.auth.signOut(); await refreshUser(); };
+      } else {
+        area.innerHTML = `<button class="btn primary" id="loginBtn">Giriş / Kayıt</button>`;
+        $('loginBtn').onclick = () => openAuthModal('login');
+      }
+    }
+
+    function requireLogin(){
+      if (user) return true;
+      toast('Bunu yapabilmek için giriş yapman gerekiyor.');
+      openAuthModal('login');
+      return false;
+    }
+
+    /* ================= auth modal ================= */
+    let authMode = 'login';
+    function openAuthModal(mode){
+      if (!configured){ toast('Önce config.js içine Supabase bilgilerini yaz.', 'warn'); return; }
+      authMode = mode;
+      $('authModal').classList.add('open');
+      $('nameField').style.display = mode === 'login' ? 'none' : '';
+      $('authEmail').parentElement.style.display = mode === 'profile' ? 'none' : '';
+      $('authPass').parentElement.style.display = mode === 'profile' ? 'none' : '';
+      $('authTitle').textContent = mode === 'signup' ? 'Kayıt ol' : mode === 'profile' ? 'Kullanıcı adını seç' : 'Giriş yap';
+      $('authGo').textContent = mode === 'signup' ? 'Hesap oluştur' : mode === 'profile' ? 'Kaydet' : 'Giriş';
+      $('authSwitch').innerHTML = mode === 'signup'
+        ? 'Hesabın var mı? <a id="sw-link">Giriş yap</a>'
+        : mode === 'profile'
+          ? ''
+          : 'Hesabın yok mu? <a id="sw-link">Kayıt ol</a>';
+      if ($('sw-link')) $('sw-link').onclick = () => openAuthModal(mode === 'signup' ? 'login' : 'signup');
+      clearAuthErrors();
+    }
+    const closeAuthModal = () => $('authModal').classList.remove('open');
+    function clearAuthErrors(){
+      for (const id of ['nameErr','emailErr','passErr','formErr']){
+        const e = $(id); e.textContent=''; e.classList.remove('show');
+      }
+    }
+    function setErr(id, msg){ const e = $(id); e.textContent = msg; e.classList.add('show'); }
+
+    $('authCancel').onclick = closeAuthModal;
+    $('authModal').addEventListener('click', e => { if (e.target === $('authModal')) closeAuthModal(); });
+
+    $('authGo').onclick = async () => {
+      clearAuthErrors();
+      const email = $('authEmail').value.trim();
+      const pass = $('authPass').value;
+      const name = $('authName').value.trim().toLowerCase();
+
+      // profil tamamlama: giriş var ama kullanıcı adı yoksa
+      if (authMode === 'profile'){
+        if (!/^[a-z0-9_]{2,20}$/.test(name)) return setErr('nameErr', '2–20 karakter; harf, rakam, _ kullan.');
+        $('authGo').disabled = true;
+        const { data: exists } = await sb.from('profiles').select('id').eq('name', name).maybeSingle();
+        if (exists){ $('authGo').disabled = false; return setErr('nameErr', 'Bu kullanıcı adı alınmış, başka bir tane dene.'); }
+        const { error } = await sb.from('profiles').upsert({ id: user.id, name });
+        $('authGo').disabled = false;
+        if (error) return setErr('formErr', error.message);
+        closeAuthModal();
+        await refreshUser();
+        return;
+      }
+
+      if (authMode === 'signup'){
+        if (!/^[a-z0-9_]{2,20}$/.test(name)) return setErr('nameErr', '2–20 karakter; harf, rakam, _ kullan.');
+        if (!email) return setErr('emailErr', 'E-posta gerekli.');
+        if (pass.length < 6) return setErr('passErr', 'Parola en az 6 karakter olmalı.');
+        $('authGo').disabled = true;
+        const { data, error } = await sb.auth.signUp({ email, password: pass });
+        $('authGo').disabled = false;
+        if (error) return setErr('formErr', error.message);
+        const uid = data.user?.id;
+        if (uid){
+          const { data: exists } = await sb.from('profiles').select('id').eq('name', name).maybeSingle();
+          if (exists) return setErr('nameErr', 'Bu kullanıcı adı alınmış, başka bir tane dene.');
+          const { error: perr } = await sb.from('profiles').upsert({ id: uid, name });
+          if (perr) return setErr('formErr', perr.message);
+        }
+        closeAuthModal();
+        if (!data.session){
+          const b = document.createElement('div');
+          b.className = 'banner ok';
+          b.style.cssText += 'position:fixed;bottom:1.2rem;left:50%;transform:translateX(-50%);z-index:60;max-width:min(92vw,32rem)';
+          b.textContent = 'Kayıt başarılı! E-postana doğrulama linki gitti; onaylayıp giriş yapabilirsin.';
+          document.body.appendChild(b);
+          setTimeout(()=>b.remove(), 9000);
+        } else {
+          await refreshUser();
+        }
+      } else {
+        if (!email) return setErr('emailErr', 'E-posta gerekli.');
+        if (!pass) return setErr('passErr', 'Parola gerekli.');
+        $('authGo').disabled = true;
+        const { error } = await sb.auth.signInWithPassword({ email, password: pass });
+        $('authGo').disabled = false;
+        if (error) return setErr('formErr', error.message);
+        closeAuthModal();
+        await refreshUser();
+      }
+    };
+
+    /* ================= paylaş modalı ================= */
+    function openPostModal(){
+      const modal = document.createElement('div');
+      modal.className = 'modal-bg open';
+      modal.innerHTML = `
+        <div class="modal">
+          <h3>Yeni gönderi</h3>
+          <div class="field">
+            <label>Başlık</label>
+            <input type="text" id="npTitle" maxlength="140" placeholder="ne paylaşıyorsun?">
+          </div>
+          <div class="field">
+            <label>Metin (isteğe bağlı)</label>
+            <textarea id="npBody" maxlength="2000" placeholder="detay..."></textarea>
+          </div>
+          <div class="field">
+            <label>Görsel (dosya seç veya link)</label>
+            <div class="imgpick">
+              <input type="file" id="npFile" accept="image/*" hidden>
+              <button class="btn" id="npPick" type="button">📁 Görsel seç</button>
+              <span class="fnote" id="npFnote">yok</span>
+              <img id="npPrev" alt="" hidden>
+            </div>
+            <input type="url" id="npImg" style="margin-top:.5rem" placeholder="— veya görsel linki yapıştır (isteğe bağlı) —">
+          </div>
+          <div class="form-err" id="npErr"></div>
+          <div class="modal-foot">
+            <button class="btn ghost" id="npCancel">Vazgeç</button>
+            <button class="btn primary" id="npGo">Paylaş</button>
+          </div>
+        </div>`;
+      document.body.appendChild(modal);
+      modal.addEventListener('click', e => { if (e.target === modal) modal.remove(); });
+      $('npCancel').onclick = () => modal.remove();
+
+      // ---- dosya seçici + önizleme ----
+      const fileInput = $('npFile');
+      $('npPick').onclick = () => fileInput.click();
+      fileInput.onchange = () => {
+        const f = fileInput.files[0];
+        $('npFnote').textContent = f ? f.name : 'yok';
+        if (f){
+          const prev = $('npPrev');
+          prev.hidden = false;
+          prev.src = URL.createObjectURL(f);
+        } else { $('npPrev').hidden = true; }
+      };
+
+      // ---- büyük görseli küçültüp yükleyen yardımcı ----
+      async function gorupYukle(file){
+        let blob = file;
+        // 400KB'tan büyük gif olmayan görseli küçült (hız + kota tasarrufu)
+        if (file.type !== 'image/gif' && file.size > 400*1024){
+          const bmp = await createImageBitmap(file);
+          const scale = Math.min(1, 1600 / Math.max(bmp.width, bmp.height));
+          const c = document.createElement('canvas');
+          c.width = Math.round(bmp.width*scale); c.height = Math.round(bmp.height*scale);
+          c.getContext('2d').drawImage(bmp, 0, 0, c.width, c.height);
+          blob = await new Promise(r => c.toBlob(r, 'image/jpeg', .87));
+          if (!blob) blob = file;
+        }
+        const path = user.id + '/' + Date.now() + '-' + file.name.replace(/\s+/g,'_').toLowerCase();
+        const up = await sb.storage.from('gorseller').upload(path, blob, { contentType: blob.type || file.type });
+        if (up.error) throw up.error;
+        const { data } = sb.storage.from('gorseller').getPublicUrl(path);
+        return data.publicUrl;
+      }
+
+      $('npGo').onclick = async () => {
+        const title = $('npTitle').value.trim();
+        const body = $('npBody').value.trim();
+        const errEl = $('npErr');
+        if (!title){ errEl.textContent = 'Başlık gerekli.'; errEl.classList.add('show'); return; }
+        $('npGo').disabled = true;
+        try {
+          let gorselUrl = $('npImg').value.trim() || null;
+          if (fileInput.files[0]) gorselUrl = await gorupYukle(fileInput.files[0]);
+          const { error } = await sb.from('posts').insert({
+            user_id: user.id, author: profile?.name ?? null,
+            title, body: body || null, image_url: gorselUrl
+          });
+          if (error) throw error;
+          modal.remove();
+          renderFeed();
+        } catch(e){
+          errEl.textContent = e.message ?? 'Bir sorun oluştu'; errEl.classList.add('show');
+          $('npGo').disabled = false;
+        }
+      };
+    }
+
+    /* ================= akış ================= */
+    async function renderFeed(){
+      const main = $('main');
+      if (!configured){
+        main.innerHTML = `
+          <div class="banner warn">
+            Kurulum yarım kaldı:<br><br>
+            1) <b>supabase.com</b> → ücretsiz proje aç<br>
+            2) <b>SQL Editor</b> → <b>schema.sql</b> içeriğini yapıştır, çalıştır<br>
+            3) Project URL + anon key → <b>config.js</b> içine yaz<br>
+            4) Bu sayfayı yenile
+          </div>`;
+        return;
+      }
+      main.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+      const { data, error } = await sb.from('akis').select('*').order('created_at', { ascending:false }).limit(50);
+      if (error){
+        main.innerHTML = `<div class="banner warn">Akış yüklenemedi: ${esc(error.message)}</div>`;
+        return;
+      }
+      main.innerHTML = '<div class="stack" id="feed"></div>';
+      const feed = $('feed');
+      if (!data.length){
+        feed.innerHTML = '<div class="empty">Henüz gönderi yok — ilk paylaşan sen ol! ✍️</div>';
+        return;
+      }
+      // oy durumum
+      let myVotes = {};
+      if (user){
+        const { data: vs } = await sb.from('votes').select('post_id, value').eq('user_id', user.id);
+        myVotes = Object.fromEntries((vs ?? []).map(v => [v.post_id, v.value]));
+      }
+      for (const post of data) feed.appendChild(postCard(post, myVotes[post.id] ?? 0));
+    }
+
+    function postCard(post, myVote){
+      const mine = user && post.user_id === user.id;
+      const card = document.createElement('article');
+      card.className = 'card';
+      card.innerHTML = `
+        <div class="card-head">
+          <span class="author">@<b>${esc(post.author ?? 'bilinmeyen')}</b></span>
+          <span class="time">${timeAgo(post.created_at)}</span>
+        </div>
+        <div class="title">${esc(post.title)}</div>
+        ${post.body ? `<div class="body">${esc(post.body)}</div>` : ''}
+        ${post.image_url ? `<img src="${esc(post.image_url)}" alt="" loading="lazy" onerror="this.remove()">` : ''}
+        <div class="foot">
+          <div class="vote" title="Beğeni">
+            <button class="up ${myVote === 1 ? 'on-up' : ''}">👍</button>
+            <span class="num upN">${post.up_count ?? 0}</span>
+            <span class="sep"></span>
+            <button class="down ${myVote === -1 ? 'on-down' : ''}">👎</button>
+            <span class="num downN">${post.down_count ?? 0}</span>
+          </div>
+          <button class="tbtn cbtn">💬 <span class="ccount">${post.comment_count ?? 0}</span></button>
+          <span class="spacer"></span>
+          ${mine ? `<button class="tbtn del" title="Sil">🗑 sil</button>` : ''}
+        </div>
+        <div class="cbox" hidden></div>`;
+
+      const upN = card.querySelector('.upN');
+      const downN = card.querySelector('.downN');
+      const upBtn = card.querySelector('.up');
+      const downBtn = card.querySelector('.down');
+      const cbtn = card.querySelector('.cbtn');
+      const cbox = card.querySelector('.cbox');
+
+      async function vote(val){
+        if (!requireLogin()) return;
+        const newVal = myVote === val ? null : val; // null = oyunu geri al
+        if (myVote !== 0){ await sb.from('votes').delete().eq('post_id', post.id).eq('user_id', user.id); }
+        if (newVal !== null){ await sb.from('votes').insert({ post_id: post.id, user_id: user.id, value: val }); }
+        const { data: row } = await sb.from('akis').select('up_count, down_count').eq('id', post.id).maybeSingle();
+        upN.textContent = row?.up_count ?? 0;
+        downN.textContent = row?.down_count ?? 0;
+        myVote = newVal ?? 0;
+        upBtn.classList.toggle('on-up', myVote === 1);
+        downBtn.classList.toggle('on-down', myVote === -1);
+      }
+      upBtn.onclick = () => vote(1);
+      downBtn.onclick = () => vote(-1);
+
+      if (mine){
+        card.querySelector('.del').onclick = async () => {
+          if (!confirm('Bu gönderi silinsin mi?')) return;
+          await sb.from('posts').delete().eq('id', post.id);
+          renderFeed();
+        };
+      }
+
+      cbtn.onclick = () => {
+        if (cbox.hidden){ renderComments(post, cbox, cbtn); cbox.hidden = false; }
+        else cbox.hidden = true;
+      };
+
+      return card;
+    }
+
+    async function renderComments(post, box, cbtn){
+      box.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
+      const { data, error } = await sb.from('comments')
+        .select('id, body, created_at, user_id, author')
+        .eq('post_id', post.id)
+        .order('created_at');
+      if (error){ box.innerHTML = `<div class="banner warn">${esc(error.message)}</div>`; return; }
+      box.className = 'cbox comments';
+      let style = document.getElementById('cbox-style');
+      if (!style){
+        style = document.createElement('style'); style.id = 'cbox-style';
+        style.textContent = '.cbox.comments{margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem;display:flex;flex-direction:column;gap:.75rem}.comment .cbody{font-size:.88rem;color:#c9c6bd;white-space:pre-wrap;word-break:break-word}.cbox input[type=text]{width:100%;margin-top:.4rem;background:var(--panel2);border:1px solid var(--border);color:var(--ink);padding:.6rem .8rem;border-radius:6px;font-family:var(--serif);font-size:.88rem;outline:none}.cbox input[type=text]:focus{border-color:var(--acc)}';
+        document.head.appendChild(style);
+      }
+      for (const c of data){
+        const div = document.createElement('div');
+        div.className = 'comment';
+        const del = user && c.user_id === user.id
+          ? ` <button class="tdel" data-cid="${c.id}" style="background:none;border:none;color:var(--faint);cursor:pointer;font-family:var(--mono);font-size:.66rem;text-decoration:underline;padding:0">sil</button>` : '';
+        div.innerHTML = `<span class="author">@<b>${esc(c.author ?? '?')}</b> · ${timeAgo(c.created_at)}${del}</span><div class="cbody">${esc(c.body)}</div>`;
+        const seld = div.querySelector('.tdel');
+        if (seld) seld.onclick = async () => {
+          await sb.from('comments').delete().eq('id', c.id);
+          renderComments(post, box, cbtn);
+        };
+        box.appendChild(div);
+      }
+      const form = document.createElement('div');
+      form.innerHTML = `<input type="text" maxlength="500" placeholder="yorum yaz… (Enter ile gönder)">`;
+      box.appendChild(form);
+      const input = form.querySelector('input');
+      input.onkeydown = async (ev) => {
+        if (ev.key !== 'Enter') return;
+        const val = input.value.trim();
+        if (!val) return;
+        if (!requireLogin()) return;
+        input.disabled = true;
+        const { error } = await sb.from('comments').insert({
+          post_id: post.id, user_id: user.id, author: profile?.name ?? null, body: val
+        });
+        input.disabled = false;
+        if (error) return;
+        renderComments(post, box, cbtn);
+        const s = cbtn.querySelector('span');
+        s.textContent = parseInt(s.textContent) + 1;
+      };
+    }
+
+    /* ================= başlat ================= */
+    refreshUser();
+  </script>
+</body>
+</html>
