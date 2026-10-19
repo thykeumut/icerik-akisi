@@ -69,6 +69,10 @@
     .cin input:focus{border-color:var(--acc)}
     .cin input:disabled{opacity:.5}
     .cin .btn{flex-shrink:0}
+    .creplies{margin-top:.55rem;margin-left:2.6rem;padding-left:.65rem;border-left:1px solid var(--border);display:flex;flex-direction:column;gap:.55rem}
+    .creplies .cin{margin-top:.1rem}
+    .crep{background:none;border:none;color:#6a6875;cursor:pointer;font-family:var(--mono);font-size:.6rem;text-decoration:underline;padding:0}
+    .crep:hover{color:var(--acc)}
     .vote{display:flex;align-items:center;gap:.15rem;background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:.2rem .45rem;transition:border-color .2s}
     .vote:hover{border-color:#3a3d4a}
     .vote button{background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:.92rem;line-height:1;padding:.28rem .55rem;border-radius:999px;transition:all .15s}
@@ -554,7 +558,8 @@
       return card;
     }
 
-    function commentEl(c, post, box, cbtn, keepForm){
+    // ---- tek yorum satırı (yanıt konteyneri + sil + yanıtla) ----
+    function commentEl(c, post, cbtn, say){
       const div = document.createElement('div');
       div.className = 'cline';
       const initial = (c.author ?? '?')[0].toUpperCase();
@@ -562,73 +567,100 @@
       div.innerHTML = `
         <div class="cav">${esc(initial)}</div>
         <div class="cmid">
-          <div class="cmeta"><b>@${esc(c.author ?? '?')}</b><span>${timeAgo(c.created_at)}</span>${delX}</div>
+          <div class="cmeta"><b>@${esc(c.author ?? '?')}</b><span>${timeAgo(c.created_at)}</span>${delX}<button class="crep" title="Cevap yaz">yanıtla</button></div>
           <div class="cbody">${esc(c.body)}</div>
-        </div>`;
+        </div>
+        <div class="creplies"></div>`;
       const seld = div.querySelector('.cdel');
       if (seld) seld.onclick = async () => {
         seld.disabled = true;
         const { error } = await sb.from('comments').delete().eq('id', c.id);
         if (error){ seld.disabled = false; return toast(error.message, 'warn'); }
+        const silinen = div.querySelectorAll('.cline').length; // yanıtlarıyla birlikte
         div.remove();
         const s = cbtn.querySelector('.ccount');
-        s.textContent = Math.max(0, parseInt(s.textContent) - 1);
+        s.textContent = String(Math.max(0, parseInt(s.textContent) - 1 - silinen));
+      };
+      const repBtn = div.querySelector('.crep');
+      const repls = div.querySelector('.creplies');
+      repBtn.onclick = () => {
+        if (!user) return requireLogin();
+        const acik = repls.querySelector('.cin');
+        if (acik){ acik.remove(); return; } // aç/kapat
+        const row = yazmaSatiri(post, c.id, cbtn, say, y => { repls.appendChild(commentEl(y, post, cbtn, say)); });
+        repls.appendChild(row);
+        row.querySelector('input').focus();
       };
       return div;
+    }
+
+    // ---- yorum/yanıt yazma satırı ----
+    function yazmaSatiri(post, replyTo, cbtn, say, eklendi){
+      const row = document.createElement('div');
+      row.className = 'cin';
+      row.innerHTML = `
+        <div class="cav">${user && profile ? esc(profile.name[0].toUpperCase()) : '?'}</div>
+        <input type="text" maxlength="500" placeholder="${user ? (replyTo ? 'cevap yaz…' : 'yorum yaz…') : 'yazmak için giriş yap…'}">
+        <button class="btn ${user ? 'primary' : ''}">Gönder</button>`;
+      const input = row.querySelector('input');
+      const goBtn = row.querySelector('button');
+      let sending = false;
+      async function gonder(){
+        if (sending) return;
+        const val = input.value.trim();
+        if (!val) return;
+        if (!requireLogin()) return;
+        sending = true; goBtn.disabled = true; input.disabled = true;
+        const payload = { post_id: post.id, user_id: user.id, author: profile?.name ?? null, body: val };
+        if (replyTo) payload.reply_to = replyTo;
+        const { data: sent, error } = await sb.from('comments').insert(payload).select().single();
+        if (error){
+          toast(error.message, 'warn');
+          input.disabled = false; goBtn.disabled = false; sending = false;
+          return;
+        }
+        eklendi(sent);
+        input.value = '';
+        input.disabled = false; goBtn.disabled = false; sending = false;
+        input.focus();
+        say();
+      }
+      goBtn.onclick = gonder;
+      input.onkeydown = (ev) => { if (ev.key === 'Enter') gonder(); };
+      return row;
     }
 
     async function renderComments(post, box, cbtn){
       box.hidden = false;
       box.innerHTML = '<div class="cload"><span class="spinner"></span></div>';
       const { data, error } = await zamanAs(sb.from('comments')
-        .select('id, body, created_at, user_id, author')
+        .select('id, body, created_at, user_id, author, reply_to')
         .eq('post_id', post.id)
         .order('created_at'), 10);
       if (error){ box.innerHTML = `<div class="banner warn">${esc(error.message)}</div>`; return; }
       box.innerHTML = '';
-      for (const c of (data ?? [])) box.appendChild(commentEl(c, post, box, cbtn));
 
-      // ---- yazma satırı: input + Gönder düğmesi ----
-      const row = document.createElement('div');
-      row.className = 'cin';
-      row.innerHTML = `
-        <div class="cav">${user && profile ? esc(profile.name[0].toUpperCase()) : '?'}</div>
-        <input type="text" maxlength="500" placeholder="${user ? 'yorum yaz…' : 'yorum yazmak için giriş yap…'}">
-        <button class="btn ${user ? 'primary' : ''}">Gönder</button>`;
-      const input = row.querySelector('input');
-      const goBtn = row.querySelector('button');
-      let sending = false;
+      const say = () => { const s = cbtn.querySelector('.ccount'); s.textContent = String(parseInt(s.textContent) + 1); };
 
-      async function gonder(){
-        if (sending) return;
-        const val = input.value.trim();
-        if (!val) return;
-        if (!requireLogin()) return;
-        sending = true;
-        goBtn.disabled = true;
-        input.disabled = true;
-
-        const { data: sent, error } = await sb.from('comments').insert({
-          post_id: post.id, user_id: user.id, author: profile?.name ?? null, body: val
-        }).select().single();
-        if (error){
-          toast(error.message, 'warn');
-          input.disabled = false; goBtn.disabled = false; sending = false;
-          return;
-        }
-        // anında ekle (yeniden çekmeden)
-        box.insertBefore(commentEl(sent, post, box, cbtn), row);
-        input.value = '';
-        input.disabled = false; goBtn.disabled = false; sending = false;
-        input.focus();
-        const s = cbtn.querySelector('.ccount');
-        s.textContent = parseInt(s.textContent) + 1;
+      // ---- ağaç: yanıt bir üst yorumun altına girintilenir ----
+      const kids = {};
+      const roots = [];
+      for (const c of (data ?? [])){
+        if (c.reply_to){ (kids[c.reply_to] ??= []).push(c); }
+        else roots.push(c);
       }
-      goBtn.onclick = gonder;
-      input.onkeydown = (ev) => { if (ev.key === 'Enter') gonder(); };
+      function agac(c, hedef){
+        hedef.appendChild(commentEl(c, post, cbtn, say));
+        const myReplies = hedef.lastChild.querySelector('.creplies');
+        for (const k of (kids[c.id] ?? [])) agac(k, myReplies);
+      }
+      for (const c of roots) agac(c, box);
+
+      const row = yazmaSatiri(post, null, cbtn, say, y => { box.insertBefore(commentEl(y, post, cbtn, say), row); });
       box.appendChild(row);
-      if (user) input.focus();
+      if (user) row.querySelector('input').focus();
     }
+
 
     /* ================= başlat ================= */
     refreshUser();

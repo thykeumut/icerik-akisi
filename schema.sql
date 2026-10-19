@@ -68,6 +68,7 @@ create table if not exists public.comments (
   post_id uuid not null references public.posts on delete cascade,
   user_id uuid not null references auth.users on delete cascade,
   author text,
+  reply_to uuid references public.comments(id) on delete cascade,
   body text not null check (char_length(body) between 1 and 500),
   created_at timestamptz not null default now()
 );
