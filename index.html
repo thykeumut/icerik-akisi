@@ -52,6 +52,23 @@
     .foot button.tbtn{background:none;border:none;color:var(--dim);cursor:pointer;font-family:var(--mono);font-size:.72rem;padding:.1rem}
     .foot button.tbtn:hover{color:var(--acc)}
     .foot button.tbtn.del:hover{color:var(--acc2)}
+    /* yorum paneli */
+    .cbox{margin-top:.9rem;border-top:1px solid var(--border);padding-top:.9rem;display:flex;flex-direction:column;gap:.65rem}
+    .cload{padding:.5rem 0;display:flex;align-items:center}
+    .cline{display:flex;gap:.55rem;align-items:flex-start}
+    .cav{width:28px;height:28px;border-radius:50%;background:var(--panel2);border:1px solid var(--border);display:flex;align-items:center;justify-content:center;font-family:var(--mono);font-size:.68rem;font-weight:600;color:var(--acc);flex-shrink:0;padding-top:1px}
+    .cmid{min-width:0;flex:1}
+    .cmeta{display:flex;gap:.55rem;align-items:baseline;font-family:var(--mono);font-size:.66rem;color:var(--faint)}
+    .cmeta b{color:var(--ink);font-weight:600;font-size:.72rem}
+    .cbody{font-size:.88rem;color:#c9c6bd;white-space:pre-wrap;word-break:break-word;margin-top:.12rem}
+    .cdel{background:none;border:none;color:#4f4d57;cursor:pointer;font-family:var(--mono);font-size:.6rem;text-decoration:underline;padding:0}
+    .cdel:hover{color:var(--acc2)}
+    .cin{display:flex;gap:.45rem;align-items:center;margin-top:.25rem}
+    .cin .cav{width:30px;height:30px}
+    .cin input{flex:1;min-width:0;background:var(--panel2);border:1px solid var(--border);color:var(--ink);padding:.55rem .75rem;border-radius:8px;font-family:var(--serif);font-size:.88rem;outline:none;transition:border-color .18s}
+    .cin input:focus{border-color:var(--acc)}
+    .cin input:disabled{opacity:.5}
+    .cin .btn{flex-shrink:0}
     .vote{display:flex;align-items:center;gap:.15rem;background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:.2rem .45rem;transition:border-color .2s}
     .vote:hover{border-color:#3a3d4a}
     .vote button{background:transparent;border:none;color:var(--dim);cursor:pointer;font-size:.92rem;line-height:1;padding:.28rem .55rem;border-radius:999px;transition:all .15s}
@@ -156,6 +173,14 @@
     let user = null;
     let profile = null;
 
+    /* ================= hız güvenliği: donma olmasın ================= */
+    function zamanAs(pr, sn = 8){
+      return Promise.race([
+        pr,
+        new Promise((_, rej) => setTimeout(() => rej(new Error('Bağlantı çok yavaş — tekrar deneyin')), sn * 1000))
+      ]);
+    }
+
     /* ================= yardımcılar ================= */
     function timeAgo(d){
       const s = (Date.now() - new Date(d).getTime()) / 1000;
@@ -177,14 +202,18 @@
     /* ================= auth ================= */
     async function refreshUser(){
       if (!sb) return;
-      const { data } = await sb.auth.getUser();
-      user = data?.user ?? null;
-      profile = null;
-      if (user){
-        const { data: p } = await sb.from('profiles').select('*').eq('id', user.id).maybeSingle();
-        profile = p;
+      try {
+        const { data } = await zamanAs(sb.auth.getUser());
+        user = data?.user ?? null;
+        profile = null;
+        if (user){
+          const { data: p, error: perr } = await zamanAs(sb.from('profiles').select('*').eq('id', user.id).maybeSingle());
+          if (!perr) profile = p;
+        }
+        if (user && !profile) openAuthModal('profile'); // yarım kalan kayıt → kullanıcı adını tamamlat
+      } catch(e){
+        console.warn('auth hatası', e);
       }
-      if (user && !profile) openAuthModal('profile'); // yarım kalan kayıt → kullanıcı adını tamamlat
       renderAuthArea();
       renderFeed();
     }
@@ -405,14 +434,23 @@
         return;
       }
       main.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
-      const { data, error } = await sb.from('akis').select('*').order('created_at', { ascending:false }).limit(50);
+      let data, error;
+      try {
+        ({ data, error } = await zamanAs(sb.from('akis').select('*').order('created_at', { ascending:false }).limit(50), 12));
+      } catch(e){
+        error = e;
+      }
       if (error){
-        main.innerHTML = `<div class="banner warn">Akış yüklenemedi: ${esc(error.message)}</div>`;
+        main.innerHTML = `
+          <div class="banner warn">Akış yüklenemedi: ${esc(error.message)}</div>
+          <div class="empty"><button class="btn" id="retryFeed">🔄 Tekrar dene</button></div>`;
+        const rb = $('retryFeed');
+        if (rb) rb.onclick = renderFeed;
         return;
       }
       main.innerHTML = '<div class="stack" id="feed"></div>';
       const feed = $('feed');
-      if (!data.length){
+      if (!data || !data.length){
         feed.innerHTML = '<div class="empty">Henüz gönderi yok — ilk paylaşan sen ol! ✍️</div>';
         return;
       }
@@ -460,15 +498,42 @@
 
       async function vote(val){
         if (!requireLogin()) return;
-        const newVal = myVote === val ? null : val; // null = oyunu geri al
-        if (myVote !== 0){ await sb.from('votes').delete().eq('post_id', post.id).eq('user_id', user.id); }
-        if (newVal !== null){ await sb.from('votes').insert({ post_id: post.id, user_id: user.id, value: val }); }
-        const { data: row } = await sb.from('akis').select('up_count, down_count').eq('id', post.id).maybeSingle();
-        upN.textContent = row?.up_count ?? 0;
-        downN.textContent = row?.down_count ?? 0;
-        myVote = newVal ?? 0;
+        upBtn.disabled = downBtn.disabled = true;
+        const prevVal = myVote;
+
+        // ---- anında yerel güncelleme ----
+        myVote = prevVal === val ? 0 : val;
+        let up = parseInt(upN.textContent) || 0;
+        let down = parseInt(downN.textContent) || 0;
+        if (prevVal === 1) up--; else if (prevVal === -1) down--;
+        if (myVote === 1) up++; else if (myVote === -1) down++;
+        upN.textContent = up;
+        downN.textContent = down;
         upBtn.classList.toggle('on-up', myVote === 1);
         downBtn.classList.toggle('on-down', myVote === -1);
+
+        // ---- sunucuya uygula ----
+        if (prevVal !== 0){
+          const { error: remErr } = await sb.from('votes').delete().eq('post_id', post.id).eq('user_id', user.id);
+          if (remErr){ marka(); return; }
+        }
+        if (myVote !== 0){
+          const { error: insErr } = await sb.from('votes').insert({ post_id: post.id, user_id: user.id, value: val });
+          if (insErr){ marka(); return; }
+        }
+        upBtn.disabled = downBtn.disabled = false;
+
+        // ---- hata olursa sayıları sunucudan tazele ----
+        async function marka(){
+          toast('Oy kaydedilemedi, eski haline döndürüldü.', 'warn');
+          myVote = prevVal;
+          const { data: row } = await sb.from('akis').select('up_count, down_count').eq('id', post.id).maybeSingle();
+          upN.textContent = row?.up_count ?? upN.textContent;
+          downN.textContent = row?.down_count ?? downN.textContent;
+          upBtn.classList.toggle('on-up', prevVal === 1);
+          downBtn.classList.toggle('on-down', prevVal === -1);
+          upBtn.disabled = downBtn.disabled = false;
+        }
       }
       upBtn.onclick = () => vote(1);
       downBtn.onclick = () => vote(-1);
@@ -489,52 +554,80 @@
       return card;
     }
 
+    function commentEl(c, post, box, cbtn, keepForm){
+      const div = document.createElement('div');
+      div.className = 'cline';
+      const initial = (c.author ?? '?')[0].toUpperCase();
+      const delX = user && c.user_id === user.id ? ` <button class="cdel" title="Bu yorumu sil">sil</button>` : '';
+      div.innerHTML = `
+        <div class="cav">${esc(initial)}</div>
+        <div class="cmid">
+          <div class="cmeta"><b>@${esc(c.author ?? '?')}</b><span>${timeAgo(c.created_at)}</span>${delX}</div>
+          <div class="cbody">${esc(c.body)}</div>
+        </div>`;
+      const seld = div.querySelector('.cdel');
+      if (seld) seld.onclick = async () => {
+        seld.disabled = true;
+        const { error } = await sb.from('comments').delete().eq('id', c.id);
+        if (error){ seld.disabled = false; return toast(error.message, 'warn'); }
+        div.remove();
+        const s = cbtn.querySelector('.ccount');
+        s.textContent = Math.max(0, parseInt(s.textContent) - 1);
+      };
+      return div;
+    }
+
     async function renderComments(post, box, cbtn){
-      box.innerHTML = '<div class="empty"><span class="spinner"></span></div>';
-      const { data, error } = await sb.from('comments')
+      box.hidden = false;
+      box.innerHTML = '<div class="cload"><span class="spinner"></span></div>';
+      const { data, error } = await zamanAs(sb.from('comments')
         .select('id, body, created_at, user_id, author')
         .eq('post_id', post.id)
-        .order('created_at');
+        .order('created_at'), 10);
       if (error){ box.innerHTML = `<div class="banner warn">${esc(error.message)}</div>`; return; }
-      box.className = 'cbox comments';
-      let style = document.getElementById('cbox-style');
-      if (!style){
-        style = document.createElement('style'); style.id = 'cbox-style';
-        style.textContent = '.cbox.comments{margin-top:1rem;border-top:1px solid var(--border);padding-top:1rem;display:flex;flex-direction:column;gap:.75rem}.comment .cbody{font-size:.88rem;color:#c9c6bd;white-space:pre-wrap;word-break:break-word}.cbox input[type=text]{width:100%;margin-top:.4rem;background:var(--panel2);border:1px solid var(--border);color:var(--ink);padding:.6rem .8rem;border-radius:6px;font-family:var(--serif);font-size:.88rem;outline:none}.cbox input[type=text]:focus{border-color:var(--acc)}';
-        document.head.appendChild(style);
-      }
-      for (const c of data){
-        const div = document.createElement('div');
-        div.className = 'comment';
-        const del = user && c.user_id === user.id
-          ? ` <button class="tdel" data-cid="${c.id}" style="background:none;border:none;color:var(--faint);cursor:pointer;font-family:var(--mono);font-size:.66rem;text-decoration:underline;padding:0">sil</button>` : '';
-        div.innerHTML = `<span class="author">@<b>${esc(c.author ?? '?')}</b> · ${timeAgo(c.created_at)}${del}</span><div class="cbody">${esc(c.body)}</div>`;
-        const seld = div.querySelector('.tdel');
-        if (seld) seld.onclick = async () => {
-          await sb.from('comments').delete().eq('id', c.id);
-          renderComments(post, box, cbtn);
-        };
-        box.appendChild(div);
-      }
-      const form = document.createElement('div');
-      form.innerHTML = `<input type="text" maxlength="500" placeholder="yorum yaz… (Enter ile gönder)">`;
-      box.appendChild(form);
-      const input = form.querySelector('input');
-      input.onkeydown = async (ev) => {
-        if (ev.key !== 'Enter') return;
+      box.innerHTML = '';
+      for (const c of (data ?? [])) box.appendChild(commentEl(c, post, box, cbtn));
+
+      // ---- yazma satırı: input + Gönder düğmesi ----
+      const row = document.createElement('div');
+      row.className = 'cin';
+      row.innerHTML = `
+        <div class="cav">${user && profile ? esc(profile.name[0].toUpperCase()) : '?'}</div>
+        <input type="text" maxlength="500" placeholder="${user ? 'yorum yaz…' : 'yorum yazmak için giriş yap…'}">
+        <button class="btn ${user ? 'primary' : ''}">Gönder</button>`;
+      const input = row.querySelector('input');
+      const goBtn = row.querySelector('button');
+      let sending = false;
+
+      async function gonder(){
+        if (sending) return;
         const val = input.value.trim();
         if (!val) return;
         if (!requireLogin()) return;
+        sending = true;
+        goBtn.disabled = true;
         input.disabled = true;
-        const { error } = await sb.from('comments').insert({
+
+        const { data: sent, error } = await sb.from('comments').insert({
           post_id: post.id, user_id: user.id, author: profile?.name ?? null, body: val
-        });
-        input.disabled = false;
-        if (error) return;
-        renderComments(post, box, cbtn);
-        const s = cbtn.querySelector('span');
+        }).select().single();
+        if (error){
+          toast(error.message, 'warn');
+          input.disabled = false; goBtn.disabled = false; sending = false;
+          return;
+        }
+        // anında ekle (yeniden çekmeden)
+        box.insertBefore(commentEl(sent, post, box, cbtn), row);
+        input.value = '';
+        input.disabled = false; goBtn.disabled = false; sending = false;
+        input.focus();
+        const s = cbtn.querySelector('.ccount');
         s.textContent = parseInt(s.textContent) + 1;
-      };
+      }
+      goBtn.onclick = gonder;
+      input.onkeydown = (ev) => { if (ev.key === 'Enter') gonder(); };
+      box.appendChild(row);
+      if (user) input.focus();
     }
 
     /* ================= başlat ================= */
