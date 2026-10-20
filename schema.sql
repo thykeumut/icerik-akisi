@@ -7,6 +7,7 @@
 create table if not exists public.profiles (
   id uuid primary key references auth.users on delete cascade,
   name text not null unique check (char_length(name) between 2 and 20),
+  admin boolean not null default false,
   created_at timestamptz not null default now()
 );
 alter table public.profiles enable row level security;
@@ -37,6 +38,10 @@ create policy "girişli kullanıcı gönderi paylaşır"
 
 create policy "sahibi kendi gönderisini siler"
   on public.posts for delete using (auth.uid() = user_id);
+
+create policy "admin herhangi bir gönderiyi siler"
+  on public.posts for delete
+  using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.admin));
 
 create policy "sahibi kendi gönderisini düzenler"
   on public.posts for update using (auth.uid() = user_id);
@@ -82,6 +87,10 @@ create policy "girişli kullanıcı yorum yapar"
 
 create policy "sahibi kendi yorumunu siler"
   on public.comments for delete using (auth.uid() = user_id);
+
+create policy "admin herhangi bir yorumu siler"
+  on public.comments for delete
+  using (exists (select 1 from public.profiles p where p.id = auth.uid() and p.admin));
 
 -- ---------- PUANLı AKIŞ GÖRÜNÜMÜ ----------
 drop view if exists public.akis;

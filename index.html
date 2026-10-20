@@ -69,15 +69,17 @@
     .cin input:focus{border-color:var(--acc)}
     .cin input:disabled{opacity:.5}
     .cin .btn{flex-shrink:0}
-    .creplies{position:relative;margin:.55rem 0 0 calc(28px + .55rem);display:flex;flex-direction:column;gap:.55rem}
-    .creplies::before{content:"";position:absolute;left:-11px;top:.4rem;bottom:.6rem;width:2px;border-radius:2px;background:linear-gradient(180deg,#2e313c 65%,transparent)}
-    .creplies .cline{position:relative;background:#131418;border:1px solid #22242d;border-radius:12px;padding:.55rem .75rem}
+    /* yanıtlar: yorum metninin ALTINDA ayrı balon, sola bağlantı çizgisi */
+    .creplies{position:relative;margin:.7rem 0 0 .85rem;padding:.6rem .7rem .7rem .95rem;background:#131418;border:1px solid #22242d;border-radius:12px;display:flex;flex-direction:column;gap:.6rem}
+    .creplies::before{content:"";position:absolute;left:-7px;top:-1.15rem;width:2px;height:1.45rem;border-radius:2px;background:#2e313c}
+    .creplies .cline{gap:.5rem}
     .creplies .cline .cav{width:24px;height:24px;font-size:.58rem}
     .creplies .cline .cmeta{font-size:.6rem;gap:.45rem}
     .creplies .cline .cmeta b{font-size:.66rem}
     .creplies .cline .cbody{font-size:.84rem;margin-top:.08rem}
-    .creplies .creplies{margin-left:calc(21px + .35rem);margin-top:.5rem}
-    .creplies .cin{background:transparent;border:none}
+    .creplies .creplies{margin-left:.7rem;padding-left:.85rem;background:transparent;border:none;border-left:1px solid #22242d;border-radius:0}
+    .creplies .creplies::before{display:none}
+    .creplies .cin{background:transparent;border:none;padding:.1rem 0}
     .crep{background:none;border:none;color:#6a6875;cursor:pointer;font-family:var(--mono);font-size:.6rem;text-decoration:underline;padding:0}
     .crep:hover{color:var(--acc)}
     .vote{display:flex;align-items:center;gap:.15rem;background:var(--panel2);border:1px solid var(--border);border-radius:999px;padding:.2rem .45rem;transition:border-color .2s}
@@ -119,6 +121,7 @@
 
     /* ---------- kullanıcı çipi ---------- */
     .userchip{display:flex;align-items:center;gap:.6rem;font-family:var(--mono);font-size:.72rem;color:var(--dim)}
+    .admchip{font-family:var(--mono);font-size:.56rem;font-weight:600;color:var(--acc);border:1px solid var(--acc);border-radius:5px;padding:.12rem .35rem;letter-spacing:.06em}
     .userchip b{color:var(--acc);font-weight:600}
     .userchip button{background:none;border:none;color:var(--dim);cursor:pointer;font-size:.7rem;text-decoration:underline;padding:0}
     .userchip button:hover{color:var(--acc2)}
@@ -233,7 +236,7 @@
       const area = $('authArea');
       if (user && profile){
         area.innerHTML = `
-          <span class="userchip">@<b>${esc(profile.name)}</b></span>
+          <span class="userchip">@<b>${esc(profile.name)}</b></span>${profile.admin ? `<span class="admchip" title="Yönetici">ADMIN</span>` : ''}
           <button class="btn primary" id="newPostBtn">Paylaş</button>
           <button class="btn ghost" id="logoutBtn">Çıkış</button>`;
         $('newPostBtn').onclick = () => openPostModal();
@@ -475,7 +478,7 @@
     }
 
     function postCard(post, myVote){
-      const mine = user && post.user_id === user.id;
+      const mine = user && (post.user_id === user.id || profile?.admin);
       const card = document.createElement('article');
       card.className = 'card';
       card.innerHTML = `
@@ -570,14 +573,14 @@
       const div = document.createElement('div');
       div.className = 'cline';
       const initial = (c.author ?? '?')[0].toUpperCase();
-      const delX = user && c.user_id === user.id ? ` <button class="cdel" title="Bu yorumu sil">sil</button>` : '';
+      const delX = user && (c.user_id === user.id || profile?.admin) ? ` <button class="cdel" title="Bu yorumu sil">sil</button>` : '';
       div.innerHTML = `
         <div class="cav">${esc(initial)}</div>
         <div class="cmid">
           <div class="cmeta"><b>@${esc(c.author ?? '?')}</b><span>${timeAgo(c.created_at)}</span>${delX}<button class="crep" title="Cevap yaz">yanıtla</button></div>
           <div class="cbody">${esc(c.body)}</div>
-        </div>
-        <div class="creplies"></div>`;
+          <div class="creplies"></div>
+        </div>`;
       const seld = div.querySelector('.cdel');
       if (seld) seld.onclick = async () => {
         seld.disabled = true;
